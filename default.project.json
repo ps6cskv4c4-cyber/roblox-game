@@ -1,0 +1,52 @@
+{
+  "name": "StormSalvagers",
+  "tree": {
+    "$className": "DataModel",
+    "Workspace": {
+      "$properties": {
+        "Gravity": 196.2,
+        "FallenPartsDestroyHeight": -100,
+        "StreamingEnabled": false
+      },
+      "World": { "$path": "assets/World.rbxmx" }
+    },
+    "ReplicatedStorage": {
+      "Shared": { "$path": "src/shared" }
+    },
+    "ServerScriptService": {
+      "Server": { "$path": "src/server" }
+    },
+    "StarterPlayer": {
+      "$properties": {
+        "CameraMaxZoomDistance": 55,
+        "CameraMinZoomDistance": 8,
+        "CharacterWalkSpeed": 22
+      },
+      "StarterPlayerScripts": { "$path": "src/client" }
+    },
+    "Lighting": {
+      "$properties": {
+        "ClockTime": 15.5,
+        "Brightness": 2.8,
+        "Ambient": [0.38, 0.4, 0.46],
+        "OutdoorAmbient": [0.52, 0.56, 0.62],
+        "GlobalShadows": true,
+        "ExposureCompensation": 0.1
+      },
+      "CoastalHaze": {
+        "$className": "Atmosphere",
+        "$properties": {
+          "Density": 0.27,
+          "Offset": 0.15,
+          "Color": [0.78, 0.88, 0.92],
+          "Decay": [0.56, 0.64, 0.7],
+          "Haze": 1.5
+        }
+      },
+      "SunBloom": {
+        "$className": "BloomEffect",
+        "$properties": { "Intensity": 0.25, "Size": 28, "Threshold": 1.5 }
+      }
+    }
+  }
+}
