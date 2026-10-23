@@ -6,6 +6,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Economy = require(Shared:WaitForChild("Economy"))
 local Rounds = require(Shared:WaitForChild("Rounds"))
+local CombatConfig = require(Shared:WaitForChild("CombatConfig"))
+local CombatService = require(script.Parent:WaitForChild("CombatService"))
 local world = workspace:WaitForChild("World")
 local safeZone = world:WaitForChild("SafeZone")
 local workshop = world:WaitForChild("Workshop")
@@ -30,6 +32,7 @@ gallery.Name = "CrewCollection"
 gallery.Parent = world
 local displayed = {}
 local displayCount = 0
+local combat
 
 local function notify(player, text, tone)
 	notice:FireClient(player, text, tone or "info")
@@ -77,6 +80,8 @@ local function sync(player)
 		NextUpgradeCost = nextPack and nextPack.Cost or 0,
 		CollectionCount = discovered,
 		BestHaul = state.BestHaul,
+		HasBlaster = state.HasBlaster,
+		WeaponLevel = state.WeaponLevel,
 	}
 	for name, value in attrs do
 		player:SetAttribute(name, value)
@@ -145,10 +150,39 @@ local function gem(parent, name, position, item, size)
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanTouch = false
+	part.CanQuery = false
 	part.Color = color
 	part.Material = item.Rarity == "Common" and Enum.Material.Wood or Enum.Material.Neon
-	if item.Rarity == "Uncommon" then
+	if name == "Pearl" or name == "StormHeart" then
 		part.Shape = Enum.PartType.Ball
+	elseif name == "Compass" or name == "OldGear" or name == "CaptainSeal" then
+		part.Shape = Enum.PartType.Cylinder
+		part.Size = Vector3.new(size * 0.4, size, size)
+	elseif name == "Driftwood" then
+		part.Size = Vector3.new(size * 0.6, size * 0.6, size * 1.7)
+	end
+	local function detail(offset, dimensions, color)
+		local p = Instance.new("Part")
+		p.Size, p.Color = dimensions, color
+		p.CFrame = part.CFrame * CFrame.new(offset)
+		p.CanCollide, p.CanTouch, p.CanQuery, p.Massless = false, false, false, true
+		p.Material = Enum.Material.Metal
+		p.Parent = part
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0, weld.Part1, weld.Parent = part, p, p
+		return p
+	end
+	if name == "CircuitCore" or name == "AncientBattery" then
+		detail(Vector3.zero, Vector3.new(size * 1.15, size * 0.3, size * 1.15), Color3.fromRGB(40, 64, 75))
+		detail(
+			Vector3.new(0, size * 0.6, 0),
+			Vector3.new(size * 0.5, size * 0.25, size * 0.5),
+			Color3.fromRGB(220, 230, 225)
+		)
+	elseif name == "Compass" or name == "CaptainSeal" then
+		detail(Vector3.zero, Vector3.new(size * 0.55, size * 0.15, size * 1.2), Color3.fromRGB(255, 220, 130))
+	elseif name == "StormHeart" or name == "ArenaShard" then
+		detail(Vector3.zero, Vector3.new(size * 1.3, size * 0.12, size * 0.4), Color3.fromRGB(255, 218, 141))
 	end
 	part.Parent = parent
 	if item.Rarity ~= "Common" then
@@ -168,21 +202,32 @@ local function showDiscovery(id)
 	end
 	displayed[id] = true
 	displayCount += 1
-	local slot = world.DisplaySlots:FindFirstChild("Slot" .. tostring(displayCount))
+	local slot = world.DisplaySlots:FindFirstChild("Slot" .. tostring((displayCount - 1) % 3 + 1))
 	if slot then
+		local old = gallery:FindFirstChild(slot.Name)
+		if old then
+			old:Destroy()
+		end
 		local trophy = gem(gallery, id, slot.Position, item, 2.5)
+		trophy.Name = slot.Name
 		floatingLabel(trophy, item.Name, Color3.fromRGB(table.unpack(item.Color)), 40)
 	end
 end
 
 local spawnTreasure
-spawnTreasure = function(marker)
+spawnTreasure = function(marker, forcedId, noRespawn)
 	if currentPhase ~= "Scavenge" then
 		return
 	end
 	local pool = string.sub(marker.Name, 1, 4) == "Wild" and Config.WildPool or Config.ShorePool
 	local id = pool[random:NextInteger(1, #pool)]
-	if marker.Name == "Shore01" then
+	if forcedId then
+		id = forcedId
+	elseif string.sub(marker.Name, 1, 5) == "Arena" then
+		id = "ArenaShard"
+	elseif string.sub(marker.Name, 1, 4) == "Dock" then
+		id = "CaptainSeal"
+	elseif marker.Name == "Shore01" then
 		id = "SeaGlass"
 	elseif marker.Name == "Wild05" then
 		id = "StormHeart"
@@ -217,11 +262,13 @@ spawnTreasure = function(marker)
 			string.format("%s  +%d haul value", message, item.Value),
 			item.Rarity == "Legendary" and "rare" or "success"
 		)
-		task.delay(Config.RespawnSeconds, function()
-			if currentRound == roundToken and currentPhase == "Scavenge" then
-				spawnTreasure(marker)
-			end
-		end)
+		if not noRespawn then
+			task.delay(Config.RespawnSeconds, function()
+				if currentRound == roundToken and currentPhase == "Scavenge" then
+					spawnTreasure(marker)
+				end
+			end)
+		end
 	end)
 end
 
@@ -290,6 +337,20 @@ createPrompt(interactions.Upgrade, "Upgrade pack", "PACK WORKBENCH", 0.4).Trigge
 	notify(player, ok and ("Pack upgraded: " .. message) or message, ok and "success" or "warning")
 end)
 
+createPrompt(interactions.Weapons, "Buy / reinforce weapons", "BLASTER 120 / REINFORCE 160, 350", 0.4).Triggered:Connect(
+	function(player)
+		if not allowStation(player, interactions.Weapons) then
+			return
+		end
+		local ok, message = Economy.armory(states[player], CombatConfig.BlasterCost, CombatConfig.UpgradeCosts)
+		if ok and combat then
+			combat.GiveWeapons(player)
+		end
+		sync(player)
+		notify(player, message, ok and "success" or "warning")
+	end
+)
+
 local function onPlayer(player)
 	if states[player] then
 		return
@@ -348,6 +409,17 @@ end)
 for _, player in Players:GetPlayers() do
 	onPlayer(player)
 end
+
+combat = CombatService.start({
+	World = world,
+	Runtime = runtime,
+	Notice = notice,
+	States = states,
+	Drop = function(winner, id, position)
+		spawnTreasure({ Name = "EnemyDrop", Position = position + Vector3.new(0, 1, 0) }, id, true)
+		notify(winner, "Sentinel down! Collect the dropped " .. Config.Items[id].Name .. ".", "success")
+	end,
+})
 
 local origin = workspace:GetServerTimeNow()
 while true do

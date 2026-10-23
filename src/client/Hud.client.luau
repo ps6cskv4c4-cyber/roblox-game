@@ -63,6 +63,7 @@ local screen = make("ScreenGui", {
 	Name = "StormSalvagersHUD",
 	ResetOnSpawn = false,
 	IgnoreGuiInset = false,
+	DisplayOrder = 10,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 }, player:WaitForChild("PlayerGui"))
 local wash = make("Frame", {
@@ -99,7 +100,7 @@ local wallet = panel(hud, {
 text(wallet, "BANKED COINS", 10, UDim2.fromOffset(17, 10), UDim2.new(1, -34, 0, 16), colors.Gold)
 local coinsText = text(wallet, "0", 26, UDim2.fromOffset(17, 28), UDim2.new(1, -34, 0, 30))
 local collectionButton = make("TextButton", {
-	Text = "COLLECTION  0 / 8  >",
+	Text = "COLLECTION",
 	TextColor3 = colors.Mint,
 	TextSize = 10,
 	Font = Enum.Font.GothamBold,
@@ -191,8 +192,8 @@ make("UISizeConstraint", { MaxSize = Vector2.new(440, 270) }, welcome)
 text(welcome, "ONE MORE FIND?", 25, UDim2.fromOffset(24, 20), UDim2.new(1, -48, 0, 38), colors.Mint)
 local intro = text(
 	welcome,
-	"Explore the island. Collect strange treasure.\nBank it here before the storm arrives.\n\nA heavier bag slows you down.\nStorms take your unbanked haul.",
-	15,
+	"Collect treasure. Bank it before the storm.\nEquip 1: cutter, then click / tap to fight.\nSentinels guard the island's rare loot.\n\nThe east bridge leads to optional PvP.\nThe workshop is safe and heals you.",
+	14,
 	UDim2.fromOffset(24, 66),
 	UDim2.new(1, -48, 0, 121),
 	colors.White,
@@ -218,10 +219,10 @@ end)
 local collection = panel(hud, {
 	Position = UDim2.fromScale(0.5, 0.48),
 	AnchorPoint = Vector2.new(0.5, 0.5),
-	Size = UDim2.new(0.9, 0, 0, 405),
+	Size = UDim2.new(0.9, 0, 0, 500),
 	Visible = false,
 })
-make("UISizeConstraint", { MaxSize = Vector2.new(590, 405) }, collection)
+make("UISizeConstraint", { MaxSize = Vector2.new(590, 500) }, collection)
 text(collection, "YOUR FIELD GUIDE", 21, UDim2.fromOffset(20, 15), UDim2.new(1, -80, 0, 32), colors.Mint)
 text(
 	collection,
@@ -244,11 +245,15 @@ local close = make("TextButton", {
 	BorderSizePixel = 0,
 }, collection)
 corner(close, 8)
-local grid = make(
-	"Frame",
-	{ Position = UDim2.fromOffset(20, 94), Size = UDim2.new(1, -40, 0, 290), BackgroundTransparency = 1 },
-	collection
-)
+local grid = make("ScrollingFrame", {
+	Position = UDim2.fromOffset(20, 94),
+	Size = UDim2.new(1, -40, 1, -110),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 4,
+	CanvasSize = UDim2.fromOffset(0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, collection)
 make("UIGridLayout", {
 	CellSize = UDim2.new(0.5, -5, 0, 64),
 	CellPadding = UDim2.fromOffset(10, 10),
@@ -292,7 +297,7 @@ local beacon = make("BillboardGui", {
 	Size = UDim2.fromOffset(155, 55),
 	StudsOffset = Vector3.new(0, 7, 0),
 	AlwaysOnTop = true,
-	MaxDistance = 350,
+	MaxDistance = 450,
 	Enabled = false,
 }, screen)
 local beaconText =
@@ -315,7 +320,7 @@ local function responsive()
 	wallet.Position = narrow and UDim2.fromScale(0.965, 0.025) or UDim2.fromScale(0.965, 0.035)
 	carryHint.TextSize = narrow and 9 or 10
 	weightText.TextSize = narrow and 10 or 11
-	collectionScale.Scale = math.min(1, math.max(0.5, (camera.ViewportSize.Y - 45) / 405))
+	collectionScale.Scale = math.min(1, math.max(0.5, (camera.ViewportSize.Y - 45) / 500))
 	welcomeScale.Scale = math.min(1, math.max(0.6, (camera.ViewportSize.Y - 45) / 270))
 end
 
@@ -329,7 +334,7 @@ local function refresh()
 	local nextCost = player:GetAttribute("NextUpgradeCost") or 80
 	local discovered = player:GetAttribute("CollectionCount") or 0
 	coinsText.Text = tostring(coins)
-	collectionButton.Text = string.format("COLLECTION  %d / 8  >", discovered)
+	collectionButton.Text = string.format("COLLECTION  %d / %d  >", discovered, #ids)
 	haulText.Text = count > 0 and string.format("HAUL  +%d COINS", value) or "EMPTY BAG"
 	weightText.Text =
 		string.format("%d / %d WEIGHT   /   %s", weight, capacity, string.upper(Config.Upgrades[level].Name))
@@ -349,12 +354,16 @@ local function refresh()
 	elseif (player:GetAttribute("BestHaul") or 0) == 0 then
 		goalTitle.Text = "Find your first treasure"
 		goalBody.Text = "Follow the trail. Hold E near a glowing find, or tap its prompt."
+	elseif not player:GetAttribute("HasBlaster") then
+		goalTitle.Text = "Gear up for the wilds"
+		goalBody.Text = "Equip 1 to fight sentinels. The blue armory sells a blaster for 120 coins."
 	elseif level < #Config.Upgrades then
 		goalTitle.Text = "Make room for more"
 		goalBody.Text = string.format("The workshop's gold workbench upgrades your pack for %d coins.", nextCost)
 	else
 		goalTitle.Text = "Complete your field guide"
-		goalBody.Text = string.format("%d of 8 finds banked. Search the wreck, ruins and beacon point.", discovered)
+		goalBody.Text =
+			string.format("%d of %d banked. New finds await at the docks, sentinels and arena.", discovered, #ids)
 	end
 end
 for _, attr in
@@ -368,9 +377,13 @@ for _, attr in
 		"NextUpgradeCost",
 		"CollectionCount",
 		"BestHaul",
+		"HasBlaster",
 	}
 do
 	player:GetAttributeChangedSignal(attr):Connect(refresh)
+end
+for _, id in ids do
+	player:GetAttributeChangedSignal("Found_" .. id):Connect(refresh)
 end
 
 local weatherToken = 0

@@ -77,7 +77,11 @@ test("every treasure can be collected and contributes its configured value", fun
 	for _ in state.Collection do
 		unique += 1
 	end
-	assert(unique == 8)
+	local expectedCount = 0
+	for _ in Config.Items do
+		expectedCount += 1
+	end
+	assert(unique == expectedCount)
 end)
 
 test("round boundaries move from collecting through storm and recovery", function()

@@ -5,6 +5,8 @@ export type State = {
 	Inventory: { string },
 	Collection: { [string]: boolean },
 	BestHaul: number,
+	HasBlaster: boolean,
+	WeaponLevel: number,
 }
 export type Item = { Name: string, Value: number, Weight: number, Rarity: string, Color: { number } }
 export type Rules = {
@@ -17,7 +19,7 @@ export type Rules = {
 local Economy = {}
 
 function Economy.new(): State
-	return { Coins = 0, Level = 1, Inventory = {}, Collection = {}, BestHaul = 0 }
+	return { Coins = 0, Level = 1, Inventory = {}, Collection = {}, BestHaul = 0, HasBlaster = false, WeaponLevel = 1 }
 end
 
 function Economy.summary(state: State, rules: Rules): (number, number, number)
@@ -81,6 +83,28 @@ function Economy.speed(state: State, rules: Rules): number
 	local weight = Economy.summary(state, rules)
 	local fullness = math.clamp(weight / rules.Upgrades[state.Level].Capacity, 0, 1)
 	return rules.BaseSpeed - (rules.BaseSpeed - rules.MinimumSpeed) * fullness
+end
+
+function Economy.armory(state: State, blasterCost: number, upgradeCosts: { number }): (boolean, string)
+	if not state.HasBlaster then
+		if state.Coins < blasterCost then
+			return false,
+				string.format("Pulse Blaster costs %d banked coins. Cutter is free: equip slot 1.", blasterCost)
+		end
+		state.Coins -= blasterCost
+		state.HasBlaster = true
+		return true, "Pulse Blaster unlocked! Equip it from your hotbar."
+	end
+	local cost = upgradeCosts[state.WeaponLevel]
+	if not cost then
+		return false, "Your weapons are fully reinforced!"
+	end
+	if state.Coins < cost then
+		return false, string.format("Reinforcing both weapons costs %d coins.", cost)
+	end
+	state.Coins -= cost
+	state.WeaponLevel += 1
+	return true, string.format("Both weapons reinforced to tier %d!", state.WeaponLevel)
 end
 
 return Economy
